@@ -1,0 +1,73 @@
+import pandas as pd
+import random
+from datetime import datetime, timedelta
+
+# Set random seed for reproducibility
+random.seed(42)
+
+print("Starting telemetry log generation...")
+
+# --- PHASE 1: GENERATE PLAYER DIMENSION DATA ---
+num_players = 1000
+player_ids = [f"PLY_{1000 + i}" for i in range(num_players)]
+cohorts = ['Alpha-Gamified', 'Beta-Standard', 'Control-Group']
+
+player_data = {
+    'player_id': player_ids,
+    'signup_date': [datetime(2026, 6, 1) + timedelta(days=random.randint(0, 14)) for _ in range(num_players)],
+    'cohort': [random.choice(cohorts) for _ in range(num_players)],
+    'account_tier': [random.choice(['Free', 'Premium']) for _ in range(num_players)]
+}
+
+df_players = pd.DataFrame(player_data)
+df_players.to_csv('player_dim.csv', index=False)
+print("✅ 'player_dim.csv' successfully created with 1,000 unique records.")
+
+
+# --- PHASE 2: GENERATE SIMULATION & GAME LOGS TELEMETRY ---
+# Levels 1 through 5. We will intentionally inject a bottleneck/drop-off at Level 4.
+game_logs = []
+base_time = datetime(2026, 6, 15, 8, 0, 0)
+
+for p_id in player_ids:
+    current_time = base_time + timedelta(minutes=random.randint(0, 1440))
+    
+    # Check account tier from our generated dataframe to add a fun analytical layer
+    tier = df_players.loc[df_players['player_id'] == p_id, 'account_tier'].values[0]
+    
+    for level in range(1, 6):
+        # Simulate a realistic drop-off/player bottleneck at Level 4
+        if level == 4 and random.random() > 0.65: 
+            # 35% of players hit a massive wall/bug here and drop off completely
+            break
+        if level == 5 and random.random() > 0.85:
+            # A few more drop off before finishing the final stage
+            break
+            
+        # Completion velocity (seconds taken to finish level)
+        # Premium players get a slight boost, Level 4 takes significantly longer
+        base_velocity = 300 if level != 4 else 750
+        velocity = int(random.normalvariate(base_velocity, 50))
+        if tier == 'Premium':
+            velocity = int(velocity * 0.9) # 10% faster completion speed
+            
+        # Track pipeline telemetry/system errors encountered during the simulation
+        errors_logged = random.choices([0, 1, 2], weights=[0.85, 0.12, 0.03])[0]
+        
+        game_logs.append({
+            'log_id': f"LOG_{100000 + len(game_logs)}",
+            'player_id': p_id,
+            'timestamp': current_time,
+            'level_reached': level,
+            'completion_velocity_sec': max(30, velocity), # Ensure no negative times
+            'errors_encountered': errors_logged,
+            'status': 'COMPLETED'
+        })
+        
+        # Advance time forward for the next level log
+        current_time += timedelta(seconds=velocity) + timedelta(seconds=random.randint(10, 60))
+
+df_logs = pd.DataFrame(game_logs)
+df_logs.to_csv('game_logs.csv', index=False)
+print(f"✅ 'game_logs.csv' successfully created with {len(df_logs):,} behavioral telemetry entries.")
+print("\n🎉 Backend Data Generation Complete! Ready for Snowflake upload.")
